@@ -119,7 +119,7 @@ async function api(path, options = {}) {
   let data;
   try { data = await response.json(); } catch { throw new Error('服务没有响应，请重试。'); }
   if (!response.ok) {
-    if (response.status === 401 && auth === 'user') showInvalidIdentity();
+    if (response.status === 401 && auth === 'user' && token === userToken) showInvalidIdentity();
     if (response.status === 401 && auth === 'admin') clearAdmin();
     const error = new Error(typeof data.detail === 'string' ? data.detail : '请检查输入后重试。');
     error.status = response.status;
@@ -157,6 +157,12 @@ async function establishIdentity() {
 }
 function clearOwnLibrary() {
   pauseAll();
+  ownerPlayer.reset();
+  requestNumber++;
+  resetResults();
+  $('#source-text').value = '';
+  $('#library-search').value = '';
+  $('#upload-status').hidden = true;
   clearTimeout(jobTimer);
   clearTimeout(libraryTimer);
   library = [];
@@ -199,7 +205,10 @@ function rememberJob(job) {
   scheduleJob(job);
 }
 function pauseAll(except) {
-  document.querySelectorAll('audio').forEach(audio => { if (audio !== except) audio.pause(); });
+  for (const player of [ownerPlayer, adminPlayer]) {
+    if (player.audio !== except) player.pause();
+  }
+  previewBox.querySelectorAll('audio').forEach(audio => { if (audio !== except) audio.pause(); });
   if (!except || !previewBox.contains(except)) closePreview();
 }
 function closePreview() {
@@ -609,67 +618,137 @@ async function loadLibrary() {
     }
   }
 }
-function createPlayer(item, row, adminUserId = null) {
-  const audio = document.createElement('audio');
-  audio.preload = 'none';
-  const initialMedia = mediaUrl(item.media_url);
-  if (initialMedia) audio.src = initialMedia;
-  let playbackRefreshedAt = 0;
-  const play = button('play', '', 'play-button');
-  play.setAttribute('aria-label', `播放 ${item.title}`);
-  play.setAttribute('aria-pressed', 'false');
+// Keep the same audio element for the whole playlist so the user's first tap
+// also unlocks subsequent tracks on browsers with per-element autoplay rules.
+function createLibraryPlayer(audio, autoAdvance) {
+  const tracks = new WeakMap();
+  let current = null;
+  let request = 0;
+  let advanceOnEnd = false;
   const controls = el('div', 'player');
-  controls.hidden = true;
   const seek = document.createElement('input');
-  seek.type = 'range'; seek.min = '0'; seek.max = String(item.duration || 1); seek.step = '0.1'; seek.value = '0';
-  seek.setAttribute('aria-label', `${item.title} 播放进度`);
+  seek.type = 'range';
+  seek.min = '0';
+  seek.step = '0.1';
   const time = el('output');
-  const updateTime = () => {
-    const length = Number.isFinite(audio.duration) ? audio.duration : item.duration;
+  controls.append(seek, time);
+
+  function showPlaying(track, playing) {
+    track.button.replaceChildren(icon(playing ? 'pause' : 'play'));
+    track.button.setAttribute('aria-label', (playing ? '暂停 ' : '播放 ') + track.item.title);
+    track.button.setAttribute('aria-pressed', String(playing));
+  }
+
+  function updateTime() {
+    if (!current) return;
+    const length = Number.isFinite(audio.duration) ? audio.duration : current.item.duration;
     seek.max = String(length || 1);
-    seek.value = String(audio.currentTime);
-    time.textContent = `${duration(audio.currentTime) || '0:00'} / ${duration(length) || '0:00'}`;
+    seek.value = String(audio.currentTime || 0);
+    time.textContent = (duration(audio.currentTime) || '0:00') + ' / ' + (duration(length) || '0:00');
     seek.setAttribute('aria-valuetext', time.textContent);
-  };
-  audio.addEventListener('loadedmetadata', updateTime);
-  audio.addEventListener('timeupdate', updateTime);
-  audio.addEventListener('play', () => {
+  }
+
+  function pause() {
+    request++;
+    advanceOnEnd = false;
+    audio.pause();
+    if (current) showPlaying(current, false);
+  }
+
+  function reset() {
+    pause();
+    current = null;
+    controls.remove();
+    audio.removeAttribute('src');
+    audio.load();
+  }
+
+  async function start(track, fromBeginning = false) {
+    const previous = current;
+    const switching = previous !== track;
+    if (switching && previous) previous.position = audio.ended ? 0 : audio.currentTime;
     pauseAll(audio);
-    play.replaceChildren(icon('pause'));
-    play.setAttribute('aria-label', `暂停 ${item.title}`);
-    play.setAttribute('aria-pressed', 'true');
-    controls.hidden = false;
+    pause();
+    const ticket = request;
+    current = track;
+    try {
+      // The list already contains a freshly signed URL. Start within the tap
+      // when possible and renew it when an old tab outlives that signature.
+      const renew = Date.now() - track.signedAt >= 45 * 60 * 1000 || audio.error;
+      if (renew) {
+        const data = await api(track.endpoint, {auth: track.auth});
+        if (ticket !== request) return;
+        track.url = mediaUrl(data.media_url);
+        track.signedAt = Date.now();
+      }
+      if (!track.url) throw new Error('音乐地址无效，请重新加载。');
+      if (switching || renew || !audio.getAttribute('src')) {
+        audio.src = track.url;
+        audio.currentTime = fromBeginning ? 0 : track.position;
+      } else if (audio.ended || fromBeginning) {
+        audio.currentTime = 0;
+      }
+      track.row.append(controls);
+      seek.setAttribute('aria-label', track.item.title + ' 播放进度');
+      updateTime();
+      advanceOnEnd = autoAdvance;
+      await audio.play();
+    } catch (error) {
+      if (ticket === request) {
+        advanceOnEnd = false;
+        if (error.name !== 'AbortError') toast('音乐暂时无法播放，请再点一次播放。');
+      }
+    }
+  }
+
+  audio.addEventListener('playing', () => {
+    if (current && !audio.paused) showPlaying(current, true);
   });
   audio.addEventListener('pause', () => {
-    play.replaceChildren(icon('play'));
-    play.setAttribute('aria-label', `播放 ${item.title}`);
-    play.setAttribute('aria-pressed', 'false');
+    if (current && audio.paused) showPlaying(current, false);
   });
-  audio.addEventListener('error', () => toast('音乐无法播放，请重试。'));
-  play.addEventListener('click', async () => {
-    if (!audio.paused) { audio.pause(); return; }
-    play.disabled = true;
-    try {
-      if (!playbackRefreshedAt || Date.now() - playbackRefreshedAt > 45 * 60 * 1000) {
-        const endpoint = adminUserId ? `/api/admin/users/${encodeURIComponent(adminUserId)}/library/${encodeURIComponent(item.id)}/playback` : `/api/library/${encodeURIComponent(item.id)}/playback`;
-        const playback = await api(endpoint, {auth: adminUserId ? 'admin' : 'user'});
-        const url = mediaUrl(playback.media_url);
-        if (!url) throw new Error('音乐地址无效，请重新加载。');
-        const position = audio.currentTime;
-        audio.src = url;
-        if (position) audio.addEventListener('loadedmetadata', () => { audio.currentTime = position; }, {once: true});
-        playbackRefreshedAt = Date.now();
-      }
-      await audio.play();
-    } catch (error) { toast(error.message || '音乐无法播放，请重试。'); }
-    finally { play.disabled = false; }
-  });
+  audio.addEventListener('loadedmetadata', updateTime);
+  audio.addEventListener('timeupdate', updateTime);
   seek.addEventListener('input', () => { audio.currentTime = Number(seek.value); updateTime(); });
-  updateTime();
-  controls.append(seek, time);
-  row.append(play);
-  return {audio, controls};
+  audio.addEventListener('ended', () => {
+    if (!current || !audio.ended) return;
+    showPlaying(current, false);
+    if (!advanceOnEnd || current.row.hidden || !current.row.isConnected) return;
+    for (let row = current.row.nextElementSibling; row; row = row.nextElementSibling) {
+      if (!row.hidden && tracks.has(row)) {
+        start(tracks.get(row), true);
+        break;
+      }
+    }
+  });
+  audio.addEventListener('error', () => {
+    if (current && audio.error) {
+      showPlaying(current, false);
+      toast('音乐无法播放，请重试。');
+    }
+  });
+
+  function add(item, row, adminUserId) {
+    const play = button('play', '', 'play-button');
+    const prefix = adminUserId ? '/api/admin/users/' + encodeURIComponent(adminUserId) : '/api';
+    const track = {item, row, button: play, position: 0, url: mediaUrl(item.media_url),
+      signedAt: Date.now(), auth: adminUserId ? 'admin' : 'user',
+      endpoint: prefix + '/library/' + encodeURIComponent(item.id) + '/playback'};
+    tracks.set(row, track);
+    showPlaying(track, false);
+    play.addEventListener('click', () => {
+      if (current === track && !audio.paused) pause();
+      else start(track);
+    });
+    row.append(play);
+  }
+  function remove(row) {
+    if (current && current.row === row) reset();
+  }
+  return {audio, add, pause, reset, remove};
 }
+const ownerPlayer = createLibraryPlayer($('#library-audio'), true);
+const adminPlayer = createLibraryPlayer($('#admin-audio'), false);
 function renderLibrary() {
   const query = $('#library-search').value.trim().toLocaleLowerCase();
   const list = $('#library-list');
@@ -684,9 +763,8 @@ function renderLibrary() {
       if (oldRow?.contains(previewBox)) closePreview();
       row = el('article', 'library-row');
       row.dataset.signature = signature;
-      let player;
-      if (item.media_url && item.status === 'ready' && mediaUrl(item.media_url)) {
-        player = createPlayer(item, row);
+      if (item.kind === 'file' && item.status === 'ready' && mediaUrl(item.media_url)) {
+        ownerPlayer.add(item, row);
       } else if (item.kind === 'link' && safeUrl(item.source_url)) {
         const open = button('play', '', 'play-button');
         open.setAttribute('aria-label', `试听 ${item.title}`);
@@ -699,7 +777,6 @@ function renderLibrary() {
       info.append(el('div', 'track-title', item.title || '未命名音乐'));
       info.append(el('div', 'track-meta', [item.artist, duration(item.duration), item.kind === 'link' ? '链接' : ''].filter(Boolean).join(' · ')));
       row.append(info);
-      if (player) row.append(player.audio, player.controls);
       if (item.status !== 'ready') row.append(el('div', 'item-status', libraryStatusText(item.status)));
       if (item.error) row.append(el('div', 'item-error', item.error));
       if (item.status === 'failed' && item.kind === 'file' && item.source !== '本机文件') {
@@ -711,7 +788,7 @@ function renderLibrary() {
         });
         row.append(retry);
       }
-      oldRow?.querySelector('audio')?.pause();
+      ownerPlayer.remove(oldRow);
       if (oldRow) oldRow.replaceWith(row);
       else list.append(row);
       libraryRows.set(item.id, row);
@@ -722,7 +799,7 @@ function renderLibrary() {
   for (const [id, row] of libraryRows) {
     if (!library.some(item => item.id === id)) {
       if (row.contains(previewBox)) closePreview();
-      row.querySelector('audio')?.pause(); row.remove(); libraryRows.delete(id);
+      ownerPlayer.remove(row); row.remove(); libraryRows.delete(id);
     }
   }
   if (!visible) list.append(el('p', 'library-empty', query ? '没有找到这首歌' : '保存的音乐会在这里'));
@@ -777,7 +854,7 @@ function clearAdmin() {
   try { sessionStorage.removeItem('music_admin_token'); } catch { /* Browser storage can be unavailable. */ }
   selectedAdminUser = null;
   adminRequestNumber++;
-  $('#admin-library').querySelectorAll('audio').forEach(audio => audio.pause());
+  adminPlayer.reset();
   $('#admin-library').replaceChildren();
   $('#admin-content').hidden = true;
   $('#admin-login-form').hidden = false;
@@ -832,7 +909,7 @@ async function loadAdminUsers() {
 }
 async function selectAdminUser(user) {
   const number = ++adminRequestNumber;
-  $('#admin-library').querySelectorAll('audio').forEach(audio => audio.pause());
+  adminPlayer.reset();
   selectedAdminUser = user;
   renderAdminUsers();
   $('#admin-user-detail').hidden = false;
@@ -846,8 +923,7 @@ async function selectAdminUser(user) {
     $('#admin-library').replaceChildren();
     for (const item of items) {
       const row = el('article', 'library-row');
-      let player;
-      if (item.status === 'ready' && item.kind === 'file' && mediaUrl(item.media_url)) player = createPlayer(item, row, user.id);
+      if (item.status === 'ready' && item.kind === 'file' && mediaUrl(item.media_url)) adminPlayer.add(item, row, user.id);
       else if (item.kind === 'link' && safeUrl(item.source_url)) {
         const link = el('a', 'play-button');
         link.href = safeUrl(item.source_url); link.target = '_blank'; link.rel = 'noopener noreferrer'; link.setAttribute('aria-label', `试听 ${item.title}`); link.append(icon('external')); row.append(link);
@@ -858,7 +934,6 @@ async function selectAdminUser(user) {
       info.append(el('div', 'track-title', item.title));
       info.append(el('div', 'track-meta', [item.artist, duration(item.duration), libraryStatusText(item.status)].filter(Boolean).join(' · ')));
       row.append(info);
-      if (player) row.append(player.audio, player.controls);
       $('#admin-library').append(row);
     }
     if (!items.length) $('#admin-library').append(el('p', 'status', '还没有收藏'));
@@ -1041,7 +1116,7 @@ $('#settings-open').addEventListener('click', async () => {
 });
 $('#settings-dialog').addEventListener('close', () => {
   clearTimeout(exportTimer);
-  $('#admin-library').querySelectorAll('audio').forEach(audio => audio.pause());
+  adminPlayer.reset();
   $('#admin-password').value = '';
 });
 $('#admin-login-form').addEventListener('submit', async event => {
@@ -1098,6 +1173,7 @@ $('#import-form').addEventListener('submit', async event => {
   finally { submit.disabled = false; buttonState(submit, 'plus', '添加'); }
 });
 for (const node of document.querySelectorAll('[data-close]')) node.addEventListener('click', () => document.getElementById(node.dataset.close).close());
+let identityChangedDuringInit = false;
 async function init() {
   if (initializing) return;
   initializing = true;
@@ -1107,12 +1183,15 @@ async function init() {
   $('#import-open').disabled = true;
   try {
     await establishIdentity();
+    if (identityChangedDuringInit) return;
     $('#session-status').textContent = '';
     await Promise.all([loadLibrary(), loadSelections()]);
+    if (identityChangedDuringInit) return;
     const jobId = readStorage(localStorage, 'tingjian_job');
     if (jobId) {
       try {
         const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+        if (identityChangedDuringInit) return;
         if (job.source) $('#source-text').value = job.source;
         rememberJob(job);
       } catch (error) {
@@ -1127,6 +1206,10 @@ async function init() {
     initializing = false;
     submitting(false);
     $('#import-open').disabled = false;
+    if (identityChangedDuringInit) {
+      identityChangedDuringInit = false;
+      init();
+    }
   }
 }
 $('#session-retry').addEventListener('click', init);
@@ -1143,9 +1226,12 @@ $('#identity-recreate').addEventListener('click', async event => {
   finally { node.disabled = false; }
 });
 window.addEventListener('storage', event => {
-  if (event.key !== 'music_user_token' || event.newValue === userToken || initializing) return;
+  if (event.key !== null && event.key !== 'music_user_token') return;
+  const token = readStorage(localStorage, 'music_user_token');
+  if (token === userToken) return;
   clearOwnLibrary();
-  userToken = event.newValue || '';
-  init();
+  userToken = token;
+  if (initializing) identityChangedDuringInit = true;
+  else init();
 });
 init();
