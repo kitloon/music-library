@@ -16,4 +16,8 @@ h3{font-size:22px;margin:0;font-weight:700}.admin-heading,.admin-detail-heading{
 .export-card .cleanup-open{padding-left:0}
 .danger{background:#a72d2b;color:#fff}.danger:hover{background:#8c2422}
 #cleanup-dialog{max-width:560px}
+.candidate>.preview,.library-row>.preview{grid-column:1/-1;width:100%;margin-top:0}
+.preview iframe{min-height:200px;border-radius:10px}
+.preview-head>span{min-width:0;flex:1}
+.preview-head .icon-button{flex-shrink:0}
 @media(max-width:450px){.export-card{padding:16px}.export-download{width:100%}.export-card .cleanup-open{width:100%;justify-content:flex-start}}

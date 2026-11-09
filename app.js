@@ -54,6 +54,20 @@ let librarySignature = '';
 const saving = new Set();
 const libraryRows = new Map();
 const activeStatuses = ['queued', 'recognizing', 'searching'];
+const previewBox = $('#preview');
+
+function youtubeVideoId(candidate) {
+  if (/^[A-Za-z0-9_-]{11}$/.test(candidate.youtube_id || '')) return candidate.youtube_id;
+  try {
+    const url = new URL(candidate.source_url);
+    let value = '';
+    if (url.hostname === 'youtu.be') value = url.pathname.slice(1);
+    else if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(url.hostname)) {
+      value = url.pathname === '/watch' ? url.searchParams.get('v') : /^\/(?:shorts|embed)\/([^/]+)$/.exec(url.pathname)?.[1];
+    }
+    return /^[A-Za-z0-9_-]{11}$/.test(value || '') ? value : '';
+  } catch { return ''; }
+}
 
 const API_BASE = String(window.MUSIC_API_BASE || '').replace(/\/+$/, '');
 let userToken = readStorage(localStorage, 'music_user_token');
@@ -169,12 +183,13 @@ function rememberJob(job) {
 }
 function pauseAll(except) {
   document.querySelectorAll('audio').forEach(audio => { if (audio !== except) audio.pause(); });
-  if (!except || !$('#preview').contains(except)) closePreview();
+  if (!except || !previewBox.contains(except)) closePreview();
 }
 function closePreview() {
-  $('#preview').querySelectorAll('audio').forEach(audio => audio.pause());
-  $('#preview').replaceChildren();
-  $('#preview').hidden = true;
+  previewBox.querySelectorAll('audio').forEach(audio => audio.pause());
+  previewBox.replaceChildren();
+  previewBox.hidden = true;
+  $('#preview-home').append(previewBox);
 }
 function resetResults() {
   selectedMatch = 0;
@@ -255,7 +270,23 @@ function savedItem(candidate) {
   const kind = candidate.download_allowed ? 'file' : 'link';
   return library.find(item => item.source_url === candidate.source_url && item.source === candidate.source && item.kind === kind);
 }
+function updateCandidateSaveButton(node, candidate) {
+  const item = savedItem(candidate);
+  const inProgress = saving.has(candidate.id) || (item && ['downloading', 'importing', 'queued'].includes(item.status));
+  const complete = item?.status === 'ready';
+  buttonState(node, complete ? 'check' : candidate.download_allowed ? 'download' : 'link', complete ? '已保存' : inProgress ? '保存中' : '保存');
+  node.disabled = complete || inProgress;
+  node.setAttribute('aria-label', `${complete ? '已保存' : candidate.download_allowed ? '下载保存' : '收藏链接'} ${candidate.title}`);
+}
+function refreshCandidateSaveButtons(job) {
+  const candidates = new Map((job.candidates || []).map(candidate => [candidate.id, candidate]));
+  $('#candidates').querySelectorAll('[data-save-candidate]').forEach(node => {
+    const candidate = candidates.get(node.dataset.saveCandidate);
+    if (candidate) updateCandidateSaveButton(node, candidate);
+  });
+}
 function renderCandidates(job) {
+  closePreview();
   $('#matches').replaceChildren();
   if (job.matches?.length > 1) {
     job.matches.forEach((match, index) => {
@@ -268,25 +299,29 @@ function renderCandidates(job) {
   const matches = matchedCandidates(job);
   const sample = matches.find(candidate => candidate.source === '识别结果' && safeUrl(candidate.preview_url));
   $('#sample-preview').hidden = !sample;
-  $('#sample-preview').onclick = sample ? () => showPreview(sample) : null;
+  $('#sample-preview').onclick = sample ? event => showPreview(sample, $('#sample-preview'), event.currentTarget) : null;
   const versions = matches.filter(candidate => candidate !== sample);
   const visible = expandedCandidates ? versions : versions.slice(0, 1);
   $('#candidates').replaceChildren();
   visible.forEach(candidate => {
     const card = el('article', `candidate${selectedCandidate === candidate.id ? ' selected' : ''}`);
+    card.dataset.candidateId = candidate.id;
     const info = el('div', 'track-info');
     info.append(el('div', 'track-title', candidate.title || '未命名音乐'));
     info.append(el('div', 'track-meta', [candidate.artist, candidate.version && candidate.version !== '版本待确认' ? candidate.version : '', candidate.source, duration(candidate.duration)].filter(Boolean).join(' · ')));
     const actions = el('div', 'track-actions');
     const preview = button('play', '试听', 'preview-button');
     preview.setAttribute('aria-label', `试听 ${candidate.title}`);
-    preview.addEventListener('click', () => { selectedCandidate = candidate.id; renderCandidates(job); showPreview(candidate); });
-    const item = savedItem(candidate);
-    const inProgress = saving.has(candidate.id) || (item && ['downloading', 'importing', 'queued'].includes(item.status));
-    const complete = item?.status === 'ready';
-    const save = button(complete ? 'check' : candidate.download_allowed ? 'download' : 'link', complete ? '已保存' : inProgress ? '保存中' : '保存', 'primary');
-    save.disabled = complete || inProgress;
-    save.setAttribute('aria-label', `${complete ? '已保存' : candidate.download_allowed ? '下载保存' : '收藏链接'} ${candidate.title}`);
+    preview.disabled = !youtubeVideoId(candidate) && !safeUrl(candidate.preview_url);
+    if (preview.disabled) preview.title = '这个来源暂时没有可试听音源';
+    preview.addEventListener('click', event => {
+      selectedCandidate = candidate.id;
+      $('#candidates').querySelectorAll('.candidate').forEach(node => node.classList.toggle('selected', node.dataset.candidateId === candidate.id));
+      showPreview(candidate, card, event.currentTarget);
+    });
+    const save = button('download', '保存', 'primary');
+    save.dataset.saveCandidate = candidate.id;
+    updateCandidateSaveButton(save, candidate);
     save.addEventListener('click', () => saveCandidate(candidate, save));
     actions.append(preview, save);
     card.append(info, actions);
@@ -297,40 +332,42 @@ function renderCandidates(job) {
   buttonState($('#more-candidates'), expandedCandidates ? 'up' : 'down', expandedCandidates ? '收起' : '更多版本');
   if (job.status === 'ready' && !versions.length) $('#candidates').append(el('p', 'status', sample ? '暂未找到完整版。' : '暂未找到音乐，请重试。'));
 }
-function showPreview(candidate) {
+function showPreview(candidate, host, trigger) {
+  const videoId = youtubeVideoId(candidate);
+  const audioUrl = safeUrl(candidate.preview_url);
+  if (!videoId && !audioUrl) { toast('这个版本暂时无法试听，请换一个版本。'); return; }
   pauseAll();
-  const box = $('#preview');
+  const box = previewBox;
   box.hidden = false;
+  if (host === $('#sample-preview')) host.insertAdjacentElement('afterend', box);
+  else (host || $('#preview-home')).append(box);
   const header = el('div', 'preview-head');
   const close = button('close', '', 'icon-button quiet');
   close.setAttribute('aria-label', '关闭试听');
-  close.addEventListener('click', closePreview);
+  close.addEventListener('click', () => { closePreview(); trigger?.focus({preventScroll: true}); });
   header.append(el('span', '', candidate.title), close);
   box.append(header);
-  if (candidate.youtube_id && /^[\w-]{11}$/.test(candidate.youtube_id)) {
+  if (videoId) {
     const frame = document.createElement('iframe');
-    frame.src = `https://www.youtube-nocookie.com/embed/${candidate.youtube_id}?autoplay=1`;
+    const url = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+    url.search = new URLSearchParams({autoplay: '1', playsinline: '1', rel: '0', origin: location.origin});
+    frame.src = url.href;
     frame.title = `试听 ${candidate.title}`;
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
     frame.allowFullscreen = true;
     box.append(frame);
-  } else if (safeUrl(candidate.preview_url)) {
+  } else if (audioUrl) {
     const audio = document.createElement('audio');
     audio.controls = true;
-    audio.src = safeUrl(candidate.preview_url);
+    audio.src = audioUrl;
     audio.preload = 'none';
     audio.addEventListener('play', () => pauseAll(audio));
     box.append(audio);
-    audio.play().catch(() => {});
+    audio.addEventListener('error', () => toast('这个版本暂时无法试听，请换一个版本。'));
+    audio.play().catch(() => toast('请点击播放器中的播放按钮。'));
   }
-  if (safeUrl(candidate.source_url)) {
-    const link = el('a', '', '打开来源');
-    link.append(icon('external'));
-    link.href = safeUrl(candidate.source_url);
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    box.append(link);
-  }
+  box.scrollIntoView({block: 'nearest', behavior: 'instant'});
 }
 async function saveCandidate(candidate, node) {
   if (saving.has(candidate.id)) return;
@@ -345,7 +382,10 @@ async function saveCandidate(candidate, node) {
   } catch (error) { toast(error.message); }
   finally {
     saving.delete(candidate.id);
-    if (currentJob?.id === jobId) renderCandidates(currentJob);
+    if (currentJob?.id === jobId) {
+      if (previewBox.hidden) renderCandidates(currentJob);
+      else refreshCandidateSaveButtons(currentJob);
+    }
   }
 }
 async function loadLibrary() {
@@ -360,7 +400,10 @@ async function loadLibrary() {
     $('#library-total').textContent = library.length ? String(library.length) : '';
     if (changed) {
       renderLibrary();
-      if (currentJob) renderCandidates(currentJob);
+      if (currentJob) {
+        if (previewBox.hidden) renderCandidates(currentJob);
+        else refreshCandidateSaveButtons(currentJob);
+      }
     }
     if (library.some(item => ['queued', 'downloading', 'importing', 'processing'].includes(item.status))) libraryTimer = setTimeout(loadLibrary, 2000);
   } catch (error) {
@@ -441,15 +484,17 @@ function renderLibrary() {
     let row = libraryRows.get(item.id);
     if (!row || row.dataset.signature !== signature) {
       const oldRow = row;
+      if (oldRow?.contains(previewBox)) closePreview();
       row = el('article', 'library-row');
       row.dataset.signature = signature;
       let player;
       if (item.media_url && item.status === 'ready' && mediaUrl(item.media_url)) {
         player = createPlayer(item, row);
       } else if (item.kind === 'link' && safeUrl(item.source_url)) {
-        const open = el('a', 'play-button');
-        open.href = safeUrl(item.source_url); open.target = '_blank'; open.rel = 'noopener noreferrer';
-        open.setAttribute('aria-label', `打开 ${item.title}`); open.title = '打开来源'; open.append(icon('external')); row.append(open);
+        const open = button('play', '', 'play-button');
+        open.setAttribute('aria-label', `试听 ${item.title}`);
+        open.addEventListener('click', event => showPreview(item, row, event.currentTarget));
+        row.append(open);
       } else {
         const mark = el('span', 'play-button'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon(item.status === 'failed' ? 'retry' : 'download')); row.append(mark);
       }
@@ -478,7 +523,10 @@ function renderLibrary() {
     if (!row.hidden) visible++;
   });
   for (const [id, row] of libraryRows) {
-    if (!library.some(item => item.id === id)) { row.querySelector('audio')?.pause(); row.remove(); libraryRows.delete(id); }
+    if (!library.some(item => item.id === id)) {
+      if (row.contains(previewBox)) closePreview();
+      row.querySelector('audio')?.pause(); row.remove(); libraryRows.delete(id);
+    }
   }
   if (!visible) list.append(el('p', 'library-empty', query ? '没有找到这首歌' : '保存的音乐会在这里'));
 }
