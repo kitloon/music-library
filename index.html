@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#f7f8f5"><title>听见 · 我的音乐</title>
-<link rel="stylesheet" href="./style.css?v=20261109-batch1">
+<link rel="stylesheet" href="./style.css?v=20261109-progress1">
 </head>
 <body>
 <a class="skip-link" href="#source-text">开始找歌</a>
@@ -32,6 +32,7 @@
 </section>
 <section id="library" class="library-section" aria-labelledby="library-title">
 <div class="section-heading"><h2 id="library-title">我的音乐 <span id="library-total"></span></h2><div class="heading-actions"><button id="search-toggle" class="icon-button quiet" data-icon="search" aria-label="搜索我的音乐" aria-expanded="false" aria-controls="search-area" title="搜索"></button><button id="import-open" class="icon-button quiet" data-icon="plus" aria-label="添加音乐文件" title="添加音乐"></button></div></div>
+<p id="batch-progress" class="status batch-progress" role="status" aria-atomic="true"></p>
 <div id="search-area" hidden><label class="sr-only" for="library-search">搜索歌名或歌手</label><input id="library-search" placeholder="搜索歌名或歌手" type="search"></div>
 <div id="library-list" class="library-list"></div><p id="library-status" class="status" role="status"></p><button id="library-retry" class="text-button" hidden><span data-icon="retry"></span><span>重新加载</span></button>
 </section>
@@ -66,6 +67,6 @@
 <p id="cleanup-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close="cleanup-dialog">取消</button><button type="submit" id="cleanup-confirm" class="danger"><span data-icon="trash"></span><span>确认清理</span></button></div></form>
 </dialog>
 <dialog id="import-dialog" aria-labelledby="import-title"><form id="import-form"><div class="dialog-header"><h2 id="import-title">添加音乐</h2><button type="button" class="icon-button quiet" data-close="import-dialog" data-icon="close" aria-label="关闭添加音乐"></button></div><label>选择音乐文件<input name="file" type="file" accept="audio/*" required></label><details><summary>填写歌名</summary><label>歌名<input name="title" placeholder="可留空"></label><label>歌手<input name="artist" placeholder="可留空"></label></details><p id="import-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close="import-dialog">取消</button><button type="submit" class="primary"><span data-icon="plus"></span><span>添加</span></button></div></form></dialog>
-<script src="./config.js?v=20261109-batch1"></script>
-<script src="./app.js?v=20261109-batch1" defer></script>
+<script src="./config.js?v=20261109-progress1"></script>
+<script src="./app.js?v=20261109-progress1" defer></script>
 </body></html>

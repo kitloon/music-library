@@ -32,4 +32,7 @@ h3{font-size:22px;margin:0;font-weight:700}.admin-heading,.admin-detail-heading{
 .selection-list .icon-button{width:48px;min-height:48px;padding:12px}
 .selection-list .icon-button svg{width:22px;height:22px}
 .selection-section .more{margin:4px auto 0}
+.batch-progress{margin:-8px 0 18px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.batch-progress span{display:inline-block;white-space:nowrap}
+.batch-progress span:nth-of-type(2){font-weight:650;color:var(--accent)}
 @media(max-width:450px){.selection-section{padding:14px}.selection-section .primary{padding:10px 13px;font-size:18px}}

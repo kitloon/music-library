@@ -51,6 +51,7 @@ let expandedCandidates = false;
 let selectedCandidate = null;
 let library = [];
 let librarySignature = '';
+let libraryLoad = 0;
 const saving = new Set();
 let selections = [];
 let selectionsExpanded = false;
@@ -160,6 +161,8 @@ function clearOwnLibrary() {
   clearTimeout(libraryTimer);
   library = [];
   librarySignature = '';
+  libraryLoad++;
+  renderBatchProgress(null);
   libraryRows.clear();
   selectionLoad++;
   selections = [];
@@ -539,8 +542,29 @@ $('#selection-more').addEventListener('click', () => { selectionsExpanded = !sel
 $('#selection-submit').addEventListener('click', submitSelections);
 $('#selection-retry').addEventListener('click', loadSelections);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && userToken && !initializing && !selectionSubmitting && !saving.size && !removingSelections.size) loadSelections();
+  if (!document.hidden && userToken && !initializing && !selectionSubmitting && !saving.size && !removingSelections.size) {
+    loadSelections();
+    loadLibrary();
+  }
 });
+
+function renderBatchProgress(batch) {
+  const line = $('#batch-progress');
+  const parts = [];
+  if (batch && batch.total > 0) {
+    parts.push('最近一批', `已下载 ${batch.ready}/${batch.total} 首`);
+    if (batch.active) parts.push(`下载中 ${batch.active}`);
+    parts.push(`排队 ${batch.queued}`);
+    if (batch.failed) parts.push(`失败 ${batch.failed}`);
+  }
+  // Screen readers only need to announce real progress changes.
+  if (line.textContent === parts.join(' · ')) return;
+  line.replaceChildren();
+  for (const [index, part] of parts.entries()) {
+    if (index) line.append(' · ');
+    line.append(el('span', '', part));
+  }
+}
 
 function libraryStatusText(status) {
   if (status === 'ready') return '';
@@ -549,8 +573,14 @@ function libraryStatusText(status) {
 }
 async function loadLibrary() {
   clearTimeout(libraryTimer);
+  const ticket = ++libraryLoad;
+  const token = userToken;
   try {
-    library = await api('/api/library');
+    const data = await api('/api/library?with_batch=true', {cache: 'no-store'});
+    if (ticket !== libraryLoad || token !== userToken) return;
+    const batch = data.batch || null;
+    library = Array.isArray(data) ? data : data.items;
+    renderBatchProgress(batch);
     const signature = JSON.stringify(library.map(({media_url, ...item}) => item));
     const changed = signature !== librarySignature;
     librarySignature = signature;
@@ -564,15 +594,19 @@ async function loadLibrary() {
         else refreshCandidateSaveButtons(currentJob);
       }
     }
-    if (library.some(item => ['downloading', 'importing', 'processing'].includes(item.status))) {
+    if (batch?.active || library.some(item => ['downloading', 'importing', 'processing'].includes(item.status))) {
       libraryTimer = setTimeout(loadLibrary, 2000);
-    } else if (library.some(item => ['queued', 'cloud_queued'].includes(item.status))) {
+    } else if (batch?.queued || library.some(item => ['queued', 'cloud_queued'].includes(item.status))) {
       libraryTimer = setTimeout(loadLibrary, 10000);
     }
   } catch (error) {
+    if (ticket !== libraryLoad || token !== userToken) return;
     $('#library-status').textContent = error.message;
     $('#library-status').className = 'status error';
-    $('#library-retry').hidden = false;
+    $('#library-retry').hidden = error.status === 401;
+    if (!error.status || error.status === 429 || error.status >= 500) {
+      libraryTimer = setTimeout(loadLibrary, 10000);
+    }
   }
 }
 function createPlayer(item, row, adminUserId = null) {
