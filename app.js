@@ -377,7 +377,7 @@ async function saveCandidate(candidate, node) {
   buttonState(node, 'download', '保存中');
   try {
     const item = await api('/api/library', {method: 'POST', body: JSON.stringify({job_id: jobId, candidate_id: candidate.id, kind: candidate.download_allowed ? 'file' : 'link'})});
-    toast(item.kind === 'link' ? '链接已保存' : item.status === 'ready' ? '已保存到我的音乐' : '正在保存…');
+    toast(item.kind === 'link' ? '链接已保存' : item.status === 'ready' ? '已保存到我的音乐' : libraryStatusText(item.status));
     await loadLibrary();
   } catch (error) { toast(error.message); }
   finally {
@@ -387,6 +387,11 @@ async function saveCandidate(candidate, node) {
       else refreshCandidateSaveButtons(currentJob);
     }
   }
+}
+function libraryStatusText(status) {
+  if (status === 'ready') return '';
+  if (status === 'queued') return '已排队，等待下载助手';
+  return status === 'failed' ? '保存失败' : '正在保存…';
 }
 async function loadLibrary() {
   clearTimeout(libraryTimer);
@@ -405,7 +410,11 @@ async function loadLibrary() {
         else refreshCandidateSaveButtons(currentJob);
       }
     }
-    if (library.some(item => ['queued', 'downloading', 'importing', 'processing'].includes(item.status))) libraryTimer = setTimeout(loadLibrary, 2000);
+    if (library.some(item => ['downloading', 'importing', 'processing'].includes(item.status))) {
+      libraryTimer = setTimeout(loadLibrary, 2000);
+    } else if (library.some(item => item.status === 'queued')) {
+      libraryTimer = setTimeout(loadLibrary, 10000);
+    }
   } catch (error) {
     $('#library-status').textContent = error.message;
     $('#library-status').className = 'status error';
@@ -503,7 +512,7 @@ function renderLibrary() {
       info.append(el('div', 'track-meta', [item.artist, duration(item.duration), item.kind === 'link' ? '链接' : ''].filter(Boolean).join(' · ')));
       row.append(info);
       if (player) row.append(player.audio, player.controls);
-      if (item.status !== 'ready') row.append(el('div', 'item-status', item.status === 'failed' ? '保存失败' : '正在保存…'));
+      if (item.status !== 'ready') row.append(el('div', 'item-status', libraryStatusText(item.status)));
       if (item.error) row.append(el('div', 'item-error', item.error));
       if (item.status === 'failed' && item.kind === 'file' && item.source !== '本机文件') {
         const retry = button('retry', '重试', 'text-button retry-download');
@@ -659,7 +668,7 @@ async function selectAdminUser(user) {
       }
       const info = el('div', 'track-info');
       info.append(el('div', 'track-title', item.title));
-      info.append(el('div', 'track-meta', [item.artist, duration(item.duration), item.status !== 'ready' ? item.status === 'failed' ? '保存失败' : '正在保存' : ''].filter(Boolean).join(' · ')));
+      info.append(el('div', 'track-meta', [item.artist, duration(item.duration), libraryStatusText(item.status)].filter(Boolean).join(' · ')));
       row.append(info);
       if (player) row.append(player.audio, player.controls);
       $('#admin-library').append(row);
