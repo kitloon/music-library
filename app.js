@@ -52,6 +52,11 @@ let selectedCandidate = null;
 let library = [];
 let librarySignature = '';
 const saving = new Set();
+let selections = [];
+let selectionsExpanded = false;
+let selectionSubmitting = false;
+let selectionLoad = 0;
+const removingSelections = new Set();
 const libraryRows = new Map();
 const activeStatuses = ['queued', 'recognizing', 'searching'];
 const previewBox = $('#preview');
@@ -109,6 +114,7 @@ async function api(path, options = {}) {
   let response;
   try { response = await fetch(backendUrl(path), {...requestOptions, headers, referrerPolicy: 'no-referrer'}); }
   catch { throw new Error('连接中断，请重试。'); }
+  if (response.status === 204) return null;
   let data;
   try { data = await response.json(); } catch { throw new Error('服务没有响应，请重试。'); }
   if (!response.ok) {
@@ -155,6 +161,14 @@ function clearOwnLibrary() {
   library = [];
   librarySignature = '';
   libraryRows.clear();
+  selectionLoad++;
+  selections = [];
+  selectionsExpanded = false;
+  selectionSubmitting = false;
+  removingSelections.clear();
+  saving.clear();
+  $('#selection-status').textContent = '';
+  renderSelections();
   $('#library-list').replaceChildren();
   $('#library-total').textContent = '';
   currentJob = null;
@@ -272,11 +286,18 @@ function savedItem(candidate) {
 }
 function updateCandidateSaveButton(node, candidate) {
   const item = savedItem(candidate);
-  const inProgress = saving.has(candidate.id) || (item && ['downloading', 'importing', 'queued'].includes(item.status));
-  const complete = item?.status === 'ready';
-  buttonState(node, complete ? 'check' : candidate.download_allowed ? 'download' : 'link', complete ? '已保存' : inProgress ? '保存中' : '保存');
-  node.disabled = complete || inProgress;
-  node.setAttribute('aria-label', `${complete ? '已保存' : candidate.download_allowed ? '下载保存' : '收藏链接'} ${candidate.title}`);
+  const file = candidate.download_allowed;
+  const pending = file && selections.some(selection => selection.candidate_id === candidate.id);
+  const working = item && ['downloading', 'importing', 'queued', 'cloud_queued'].includes(item.status);
+  let label = file ? '选入' : '收藏';
+  let symbol = file ? 'plus' : 'link';
+  if (saving.has(candidate.id)) label = file ? '选入中' : '保存中';
+  else if (item?.status === 'ready') { label = '已保存'; symbol = 'check'; }
+  else if (working) { label = ['cloud_queued', 'queued'].includes(item.status) ? '已排队' : '保存中'; symbol = 'download'; }
+  else if (pending) { label = '已选'; symbol = 'check'; }
+  buttonState(node, symbol, label);
+  node.disabled = Boolean(pending || working || item?.status === 'ready' || saving.has(candidate.id) || (file && selectionSubmitting));
+  node.setAttribute('aria-label', `${label === '选入' ? '选入待下载' : label} ${candidate.title}`);
 }
 function refreshCandidateSaveButtons(job) {
   const candidates = new Map((job.candidates || []).map(candidate => [candidate.id, candidate]));
@@ -370,27 +391,160 @@ function showPreview(candidate, host, trigger) {
   box.scrollIntoView({block: 'nearest', behavior: 'instant'});
 }
 async function saveCandidate(candidate, node) {
-  if (saving.has(candidate.id)) return;
-  const jobId = currentJob.id;
+  if (saving.has(candidate.id) || (candidate.download_allowed && selectionSubmitting)) return;
+  const token = userToken;
+  const version = {job_id: currentJob.id, candidate_id: candidate.id};
   saving.add(candidate.id);
-  node.disabled = true;
-  buttonState(node, 'download', '保存中');
+  updateCandidateSaveButton(node, candidate);
+  updateSelectionControls();
   try {
-    const item = await api('/api/library', {method: 'POST', body: JSON.stringify({job_id: jobId, candidate_id: candidate.id, kind: candidate.download_allowed ? 'file' : 'link'})});
-    toast(item.kind === 'link' ? '链接已保存' : item.status === 'ready' ? '已保存到我的音乐' : libraryStatusText(item.status));
-    await loadLibrary();
-  } catch (error) { toast(error.message); }
-  finally {
-    saving.delete(candidate.id);
-    if (currentJob?.id === jobId) {
-      if (previewBox.hidden) renderCandidates(currentJob);
-      else refreshCandidateSaveButtons(currentJob);
+    if (candidate.download_allowed) {
+      const entry = await api('/api/selections', {method: 'POST', body: JSON.stringify(version)});
+      if (token !== userToken) return;
+      if (entry.id && entry.candidate_id && !entry.already_saved) {
+        selectionLoad++;
+        if (!selections.some(row => row.id === entry.id)) selections.push(entry);
+        renderSelections();
+        toast('已选入待下载');
+      } else {
+        await Promise.all([loadSelections(), loadLibrary()]);
+        toast('这首歌已在我的音乐');
+      }
+    } else {
+      await api('/api/library', {method: 'POST', body: JSON.stringify({...version, kind: 'link'})});
+      if (token !== userToken) return;
+      toast('链接已保存');
+      await loadLibrary();
+    }
+  } catch (error) {
+    if (token === userToken) {
+      toast(error.message);
+      if (candidate.download_allowed) await loadSelections();
+    }
+  } finally {
+    if (token === userToken) {
+      saving.delete(candidate.id);
+      updateSelectionControls();
+      if (currentJob) refreshCandidateSaveButtons(currentJob);
     }
   }
 }
+
+function updateSelectionControls() {
+  $('#selection-submit').disabled = selectionSubmitting || !selections.length || saving.size > 0 || removingSelections.size > 0;
+  $('#selection-list').querySelectorAll('[data-remove]').forEach(node => {
+    node.disabled = selectionSubmitting || removingSelections.has(node.dataset.remove);
+  });
+}
+
+function renderSelections() {
+  const section = $('#selection-section');
+  const list = $('#selection-list');
+  const failedLoad = Boolean($('#selection-status').textContent);
+  section.hidden = !selections.length && !failedLoad;
+  $('#selection-retry').hidden = !failedLoad;
+  $('#selection-submit').hidden = !selections.length;
+  $('#selection-count').textContent = selections.length ? String(selections.length) : '';
+  list.replaceChildren();
+  if (selections.length <= 3) selectionsExpanded = false;
+  const visible = selectionsExpanded ? selections : selections.slice(0, 3);
+  for (const entry of visible) {
+    const row = el('li');
+    const info = el('div');
+    info.append(el('div', 'track-title', entry.title || '未命名音乐'));
+    if (entry.artist) info.append(el('div', 'track-meta', entry.artist));
+    const remove = button('close', '', 'icon-button quiet');
+    remove.dataset.remove = entry.id;
+    remove.title = '移出待下载';
+    remove.setAttribute('aria-label', `移出待下载 ${entry.title}`);
+    remove.addEventListener('click', () => removeSelection(entry.id));
+    row.append(info, remove);
+    list.append(row);
+  }
+  const more = $('#selection-more');
+  more.hidden = selections.length <= 3;
+  more.setAttribute('aria-expanded', String(selectionsExpanded));
+  buttonState(more, selectionsExpanded ? 'up' : 'down', selectionsExpanded ? '收起清单' : `查看全部 ${selections.length} 首`);
+  updateSelectionControls();
+  if (currentJob) refreshCandidateSaveButtons(currentJob);
+}
+
+async function loadSelections() {
+  const ticket = ++selectionLoad;
+  const token = userToken;
+  try {
+    const entries = await api('/api/selections');
+    if (ticket !== selectionLoad || token !== userToken) return;
+    selections = entries;
+    $('#selection-status').textContent = '';
+  } catch (error) {
+    if (ticket !== selectionLoad || token !== userToken) return;
+    $('#selection-status').textContent = error.message;
+  }
+  renderSelections();
+}
+
+async function removeSelection(id) {
+  if (removingSelections.has(id) || selectionSubmitting) return;
+  const token = userToken;
+  const index = selections.findIndex(entry => entry.id === id);
+  removingSelections.add(id);
+  updateSelectionControls();
+  try {
+    await api(`/api/selections/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    if (token !== userToken) return;
+    selectionLoad++;
+    selections = selections.filter(entry => entry.id !== id);
+    renderSelections();
+    const controls = $('#selection-list').querySelectorAll('[data-remove]');
+    (controls[Math.min(index, controls.length - 1)] || $('#source-text')).focus({preventScroll:true});
+    toast('已移出待下载');
+  } catch (error) {
+    if (token === userToken) { toast(error.message); await loadSelections(); }
+  } finally {
+    if (token === userToken) { removingSelections.delete(id); updateSelectionControls(); }
+  }
+}
+
+async function submitSelections() {
+  if ($('#selection-submit').disabled) return;
+  const ids = selections.map(entry => entry.id);
+  const token = userToken;
+  selectionSubmitting = true;
+  updateSelectionControls();
+  if (currentJob) refreshCandidateSaveButtons(currentJob);
+  buttonState($('#selection-submit'), 'download', '提交中');
+  try {
+    const result = await api('/api/selections/submit', {method: 'POST', body: JSON.stringify({ids})});
+    if (token !== userToken) return;
+    const submitted = new Set(ids);
+    selectionLoad++;
+    selections = selections.filter(entry => !submitted.has(entry.id));
+    renderSelections();
+    toast(result.count ? `${result.count} 首已交后台下载，可以关掉网页` : '这些歌曲已处理');
+  } catch (error) {
+    if (token === userToken) toast(error.message);
+  } finally {
+    if (token === userToken) {
+      await Promise.all([loadSelections(), loadLibrary()]);
+      selectionSubmitting = false;
+      buttonState($('#selection-submit'), 'download', '全部下载');
+      updateSelectionControls();
+      if (currentJob) refreshCandidateSaveButtons(currentJob);
+    }
+  }
+}
+
+$('#selection-more').addEventListener('click', () => { selectionsExpanded = !selectionsExpanded; renderSelections(); });
+$('#selection-submit').addEventListener('click', submitSelections);
+$('#selection-retry').addEventListener('click', loadSelections);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && userToken && !initializing && !selectionSubmitting && !saving.size && !removingSelections.size) loadSelections();
+});
+
 function libraryStatusText(status) {
   if (status === 'ready') return '';
-  if (status === 'queued') return '已排队，等待下载助手';
+  if (['cloud_queued', 'queued'].includes(status)) return '已排队，会自动下载';
   return status === 'failed' ? '保存失败' : '正在保存…';
 }
 async function loadLibrary() {
@@ -412,7 +566,7 @@ async function loadLibrary() {
     }
     if (library.some(item => ['downloading', 'importing', 'processing'].includes(item.status))) {
       libraryTimer = setTimeout(loadLibrary, 2000);
-    } else if (library.some(item => item.status === 'queued')) {
+    } else if (library.some(item => ['queued', 'cloud_queued'].includes(item.status))) {
       libraryTimer = setTimeout(loadLibrary, 10000);
     }
   } catch (error) {
@@ -920,7 +1074,7 @@ async function init() {
   try {
     await establishIdentity();
     $('#session-status').textContent = '';
-    await loadLibrary();
+    await Promise.all([loadLibrary(), loadSelections()]);
     const jobId = readStorage(localStorage, 'tingjian_job');
     if (jobId) {
       try {

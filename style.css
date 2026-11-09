@@ -21,3 +21,15 @@ h3{font-size:22px;margin:0;font-weight:700}.admin-heading,.admin-detail-heading{
 .preview-head>span{min-width:0;flex:1}
 .preview-head .icon-button{flex-shrink:0}
 @media(max-width:450px){.export-card{padding:16px}.export-download{width:100%}.export-card .cleanup-open{width:100%;justify-content:flex-start}}
+
+.selection-section{margin:26px 0;padding:18px 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.selection-section .section-heading{flex-wrap:wrap;gap:8px 14px}
+#selection-count{margin-left:5px;color:var(--muted);font-size:18px;font-weight:500}
+.selection-list{list-style:none;padding:0;margin:10px 0 0}
+.selection-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.selection-list .track-title{font-size:19px}
+.selection-list .track-meta{margin-top:2px}
+.selection-list .icon-button{width:48px;min-height:48px;padding:12px}
+.selection-list .icon-button svg{width:22px;height:22px}
+.selection-section .more{margin:4px auto 0}
+@media(max-width:450px){.selection-section{padding:14px}.selection-section .primary{padding:10px 13px;font-size:18px}}
