@@ -5,19 +5,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="听见，收藏每一次心动。你的私人音乐曲库。">
-  <meta name="theme-color" content="#101b18">
+  <meta name="theme-color" content="#f7f8f2">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="听见">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="manifest" href="manifest.json">
   <title>听见 · 我的音乐</title>
   <style>
-    html,body{height:100%;margin:0;background:#101b18;color:#f3f5ec;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}
+    html,body{height:100%;margin:0;background:#f7f8f2;color:#14251c;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}
     #launch{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
     #launch img{height:88px;width:88px;border-radius:24px}
-    #launch p{margin:0;color:#b9c6bb;font-size:17px}
+    #launch p{margin:0;color:#48594c;font-size:17px}
     #launch strong{font-size:30px;letter-spacing:5px;font-weight:650}
     /* Empty tooltip semantics must not block the canvas beneath them. */
     flt-semantics:empty:not([role]):not([flt-tappable]):not([aria-label]){pointer-events:none!important}
@@ -26,8 +26,8 @@
 </head>
 <body>
   <div id="launch" role="status"><img src="icons/Icon-192.png" alt=""><strong>听见</strong><p id="launch-error">正在打开你的曲库…</p></div>
-  <script src="audio_bridge.js?v=02c3386886e0"></script>
-  <script src="flutter_bootstrap.js?v=02c3386886e0" async></script>
+  <script src="audio_bridge.js?v=8a7c7f2403c3"></script>
+  <script src="flutter_bootstrap.js?v=8a7c7f2403c3" async></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       window.addEventListener('load', () => navigator.serviceWorker.register('music_sw.js').catch(() => {}));

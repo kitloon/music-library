@@ -1,5 +1,5 @@
 /* Cache application assets only. Identity, API replies and music stay private. */
-const VERSION = 'tingjian-flutter-02c3386886e0';
+const VERSION = 'tingjian-flutter-8a7c7f2403c3';
 const ROOT = new URL('./', self.location.href);
 const shell = ['index.html', 'manifest.json', 'audio_bridge.js', 'flutter_bootstrap.js', 'favicon.png', 'icons/Icon-192.png'];
 
