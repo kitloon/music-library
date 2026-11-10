@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f7f8f5"><title>听见 · 我的音乐</title>
+<link rel="stylesheet" href="./style.css?v=20261109-autoplay1">
+</head>
+<body>
+<a class="skip-link" href="#source-text">开始找歌</a>
+<div class="page">
+<header class="header"><h1>听见</h1><button id="settings-open" class="icon-button quiet" aria-label="管理" title="管理" data-icon="settings"></button></header>
+<main>
+<p id="session-status" class="status" role="status"></p><button id="session-retry" class="text-button" hidden>重新连接</button>
+<section class="find-section" aria-labelledby="find-title">
+<h2 id="find-title">找歌</h2>
+<form id="recognize-form"><label class="sr-only" for="source-text">短视频链接</label><div class="find-row"><input id="source-text" name="text" type="text" placeholder="把视频链接粘贴在这里" autocomplete="off" required><button id="recognize-button" class="primary" type="submit"><span data-icon="search"></span><span>找歌</span></button></div></form>
+<div class="under-input"><button id="clip-open" class="text-button"><span data-icon="upload"></span><span>选片段</span></button><p id="upload-status" class="status" role="status" hidden></p></div>
+<input type="file" id="clip-file" accept="audio/*,video/*" hidden>
+</section>
+<section id="job-section" class="results-section" aria-label="找到的音乐" hidden>
+<div class="section-heading"><h2 id="job-title">正在找歌</h2><button id="retry-job" class="text-button" hidden><span data-icon="retry"></span><span>重试</span></button></div>
+<p id="job-status" class="status" role="status"></p><div id="matches" class="matches"></div>
+<button id="sample-preview" class="text-button" hidden><span data-icon="play"></span><span>听片段</span></button>
+<div id="candidates" class="candidates"></div><button id="more-candidates" class="text-button more" aria-expanded="false" hidden><span data-icon="down"></span><span>更多版本</span></button>
+</section>
+<div id="preview-home" hidden><section id="preview" class="preview" aria-label="音乐试听" hidden></section></div>
+<section id="selection-section" class="selection-section" aria-labelledby="selection-title" hidden>
+<div class="section-heading"><h2 id="selection-title">待下载 <span id="selection-count"></span></h2><button id="selection-submit" type="button" class="primary"><span data-icon="download"></span><span>全部下载</span></button></div>
+<ul id="selection-list" class="selection-list"></ul>
+<button type="button" id="selection-more" class="text-button more" aria-controls="selection-list" aria-expanded="false" hidden></button>
+<p id="selection-status" class="status error" role="status"></p><button id="selection-retry" type="button" class="text-button" hidden><span data-icon="retry"></span><span>重新加载清单</span></button>
+</section>
+<section id="library" class="library-section" aria-labelledby="library-title">
+<div class="section-heading"><h2 id="library-title">我的音乐 <span id="library-total"></span></h2><div class="heading-actions"><button id="search-toggle" class="icon-button quiet" data-icon="search" aria-label="搜索我的音乐" aria-expanded="false" aria-controls="search-area" title="搜索"></button><button id="import-open" class="icon-button quiet" data-icon="plus" aria-label="添加音乐文件" title="添加音乐"></button></div></div>
+<p id="batch-progress" class="status batch-progress" role="status" aria-atomic="true"></p>
+<div id="search-area" hidden><label class="sr-only" for="library-search">搜索歌名或歌手</label><input id="library-search" placeholder="搜索歌名或歌手" type="search"></div>
+<audio id="library-audio" preload="none" hidden></audio>
+<div id="library-list" class="library-list"></div><p id="library-status" class="status" role="status"></p><button id="library-retry" class="text-button" hidden><span data-icon="retry"></span><span>重新加载</span></button>
+</section>
+</main>
+</div>
+<div id="toast" role="status" hidden></div>
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+<div class="dialog-header"><h2 id="settings-title">管理</h2><button type="button" class="icon-button quiet" data-close="settings-dialog" data-icon="close" aria-label="关闭管理"></button></div>
+<form id="admin-login-form"><label>管理员密码<input id="admin-password" type="password" autocomplete="current-password" required></label><p id="admin-login-error" class="error" role="alert"></p><div class="dialog-actions"><button type="submit" class="primary">进入</button></div></form>
+<div id="admin-content" hidden>
+<div class="admin-heading"><h3>用户</h3><button id="admin-refresh" class="icon-button quiet" data-icon="retry" aria-label="刷新用户列表" title="刷新"></button><button id="admin-logout" class="text-button">退出管理</button></div>
+<p id="admin-status" class="status" role="status"></p><div id="admin-users" class="admin-users"></div>
+<section id="admin-user-detail" hidden><div class="admin-detail-heading"><h3 id="admin-user-title"></h3><button id="admin-rename-open" class="text-button">改名</button></div>
+<form id="admin-rename-form" hidden><label class="sr-only" for="admin-display-name">用户昵称</label><input id="admin-display-name" maxlength="60" required><div class="dialog-actions"><button type="button" id="admin-rename-cancel" class="secondary">取消</button><button type="submit" class="primary">保存</button></div></form>
+<p id="admin-user-stats" class="status"></p><audio id="admin-audio" preload="none" hidden></audio><div id="admin-library" class="library-list"></div></section>
+<details id="admin-export-section">
+<summary>导出与清理</summary>
+<form id="export-create-form">
+<label for="export-scope">导出范围</label><select id="export-scope"><option value="">全部用户</option></select>
+<div class="dialog-actions"><button type="submit" id="export-create" class="primary"><span data-icon="download"></span><span>打包导出</span></button></div>
+</form>
+<p id="export-status" class="status" role="status"></p>
+<div id="export-list" class="export-list"></div>
+<button type="button" id="export-refresh" class="text-button"><span data-icon="retry"></span><span>刷新导出记录</span></button>
+</details>
+<details id="admin-service-settings"><summary>服务设置</summary><form id="settings-form"><p class="status">空白项保留原配置。</p><fieldset><legend>ACRCloud <span id="acr-state"></span></legend><label>API Token<input type="password" name="acr_token" autocomplete="off"></label><label>区域<select name="acr_region"><option value="">保留当前区域</option><option value="ap-southeast-1">新加坡</option><option value="eu-west-1">欧洲</option><option value="us-west-2">美国</option></select></label><label>容器 ID<input name="acr_container" inputmode="numeric"></label></fieldset><fieldset><legend>AudD <span id="audd-state"></span></legend><label>API Token<input type="password" name="audd_token" autocomplete="off"></label></fieldset><fieldset><legend>YouTube <span id="youtube-state"></span></legend><label>API Key<input type="password" name="youtube_key" autocomplete="off"></label></fieldset><fieldset><legend>Jamendo <span id="jamendo-state"></span></legend><label>Client ID<input name="jamendo_client_id" autocomplete="off"></label></fieldset><p id="settings-error" class="error" role="alert"></p><div class="dialog-actions"><button type="submit" class="primary">保存</button></div></form></details>
+</div></dialog>
+<dialog id="identity-invalid-dialog" aria-labelledby="identity-invalid-title"><h2 id="identity-invalid-title">此浏览器身份已失效</h2><p class="status">建立新曲库后，可请管理员查看原来的收藏。</p><p id="identity-error" class="error" role="alert"></p><div class="dialog-actions"><button id="identity-recreate" class="primary">建立新曲库</button></div></dialog>
+<dialog id="cleanup-dialog" aria-labelledby="cleanup-title">
+<form id="cleanup-form"><div class="dialog-header"><h2 id="cleanup-title">确认清理</h2><button type="button" class="icon-button quiet" data-close="cleanup-dialog" data-icon="close" aria-label="关闭清理确认"></button></div>
+<p id="cleanup-scope"></p><p id="cleanup-summary" class="status"></p><p id="cleanup-assurance" class="status">确认已存入 pendrive，并检查音乐能播放。</p>
+<p id="cleanup-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close="cleanup-dialog">取消</button><button type="submit" id="cleanup-confirm" class="danger"><span data-icon="trash"></span><span>确认清理</span></button></div></form>
+</dialog>
+<dialog id="import-dialog" aria-labelledby="import-title"><form id="import-form"><div class="dialog-header"><h2 id="import-title">添加音乐</h2><button type="button" class="icon-button quiet" data-close="import-dialog" data-icon="close" aria-label="关闭添加音乐"></button></div><label>选择音乐文件<input name="file" type="file" accept="audio/*" required></label><details><summary>填写歌名</summary><label>歌名<input name="title" placeholder="可留空"></label><label>歌手<input name="artist" placeholder="可留空"></label></details><p id="import-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close="import-dialog">取消</button><button type="submit" class="primary"><span data-icon="plus"></span><span>添加</span></button></div></form></dialog>
+<script src="./config.js?v=20261109-autoplay1"></script>
+<script src="./app.js?v=20261109-autoplay1" defer></script>
+</body></html>
