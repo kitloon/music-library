@@ -1,5 +1,5 @@
 /* Cache application assets only. Identity, API replies and music stay private. */
-const VERSION = 'tingjian-flutter-v1';
+const VERSION = 'tingjian-flutter-c8670dbc273d';
 const ROOT = new URL('./', self.location.href);
 const shell = ['index.html', 'manifest.json', 'audio_bridge.js', 'flutter_bootstrap.js', 'favicon.png', 'icons/Icon-192.png'];
 
@@ -27,7 +27,7 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await caches.open(VERSION);
     try {
-      const response = await fetch(request);
+      const response = await fetch(request, {cache: 'no-cache'});
       if (response.ok && response.type !== 'opaque') {
         await cache.put(navigates ? new URL('index.html', ROOT).href : request, response.clone());
       }
