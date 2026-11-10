@@ -23,7 +23,7 @@
     const url = new URL(value, location.href);
     const permitted = [location.origin, 'https://kitloon-music-api.onrender.com'];
     if (!permitted.includes(url.origin) || !['https:', 'http:'].includes(url.protocol)) {
-      throw new Error('音乐地址无效，请重新打开曲库。');
+      throw new Error('Invalid music address. Reopen your library.');
     }
     return url.href;
   }
@@ -35,7 +35,7 @@
   audio.addEventListener('error', () => {
     if (!audio.error) return;
     state = 'error';
-    publish(false, '音乐暂时无法播放，请重新点播放。');
+    publish(false, 'Unable to play this track. Tap Play again.');
   });
   for (const event of ['timeupdate', 'durationchange', 'loadedmetadata', 'seeked']) {
     audio.addEventListener(event, () => publish());
@@ -57,7 +57,7 @@
       } catch (error) {
         if (ticket !== revision || error.name === 'AbortError') return;
         state = 'error';
-        publish(false, '请点一下播放按钮继续。');
+        publish(false, 'Tap Play to continue.');
       }
     },
     resume() { return window.musicAudio.play(); },
@@ -78,7 +78,7 @@
     },
     metadata(title, artist) {
       if ('mediaSession' in navigator && 'MediaMetadata' in window) {
-        navigator.mediaSession.metadata = new MediaMetadata({title: title || '听见', artist: artist || ''});
+        navigator.mediaSession.metadata = new MediaMetadata({title: title || 'T.Music', artist: artist || ''});
       }
     }
   };

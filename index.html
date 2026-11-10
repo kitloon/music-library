@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="zh-Hans">
+<html lang="en">
 <head>
   <base href="/music-library/">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="听见，收藏每一次心动。你的私人音乐曲库。">
+  <meta name="description" content="Your private music library. Find, save and play music.">
   <meta name="theme-color" content="#f7f8f2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="听见">
+  <meta name="apple-mobile-web-app-title" content="T.Music">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="manifest" href="manifest.json">
-  <title>听见 · 我的音乐</title>
+  <title>T.Music</title>
   <style>
     html,body{height:100%;margin:0;background:#f7f8f2;color:#14251c;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}
     #launch{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
@@ -25,9 +25,9 @@
   </style>
 </head>
 <body>
-  <div id="launch" role="status"><img src="icons/Icon-192.png" alt=""><strong>听见</strong><p id="launch-error">正在打开你的曲库…</p></div>
-  <script src="audio_bridge.js?v=622bb8b665ce"></script>
-  <script src="flutter_bootstrap.js?v=622bb8b665ce" async></script>
+  <div id="launch" role="status"><img src="icons/Icon-192.png" alt=""><strong>T.Music</strong><p id="launch-error">Opening your library…</p></div>
+  <script src="audio_bridge.js?v=db10189d7bb7"></script>
+  <script src="flutter_bootstrap.js?v=db10189d7bb7" async></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       window.addEventListener('load', () => navigator.serviceWorker.register('music_sw.js').catch(() => {}));
@@ -36,7 +36,7 @@
     window.addEventListener('error', event => {
       if (event.target?.tagName === 'SCRIPT') {
         const message = document.getElementById('launch-error');
-        if (message) message.textContent = '暂时无法加载，请检查网络后重新打开。';
+        if (message) message.textContent = 'Unable to load. Check your connection and reload.';
       }
     }, true);
   </script>
