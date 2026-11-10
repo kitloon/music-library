@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "听见 · 我的音乐",
+  "short_name": "听见",
+  "description": "找歌、收藏，随时听见喜欢的音乐。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#101b18",
+  "theme_color": "#101b18",
+  "lang": "zh-Hans",
+  "icons": [
+    {"src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/Icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
